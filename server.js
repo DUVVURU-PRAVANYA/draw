@@ -20,7 +20,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', rooms: rooms.size });
 });
 
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
