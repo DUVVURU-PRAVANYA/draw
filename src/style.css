@@ -26,6 +26,7 @@ body {
     radial-gradient(ellipse 50% 40% at 90% 110%, rgba(192,132,252,0.12) 0%, transparent 60%);
   color: var(--text);
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -34,6 +35,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   padding: .85rem 1rem;
   gap: .85rem;
 }
@@ -387,7 +389,7 @@ input[type="range"] {
     transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .controls-panel.collapsed {
-    transform: translateY(calc(100% - 64px));
+    transform: translateY(calc(100% - 75px));
   }
   .panel-header-mobile {
     margin-bottom: 0;
