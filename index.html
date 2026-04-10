@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Air Draw — Gesture Doodler</title>
+  <meta name="description" content="Draw in mid-air with real-time AI hand tracking. No lag, no server required." />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Global overlays ─────────────────────────────────────── -->
+  <div id="color-flash"></div>
+  <div id="toast"></div>
+  <div id="countdown-badge"></div>
+
+  <!-- ── Onboarding modal ────────────────────────────────────── -->
+  <div id="onboarding-modal" class="modal-overlay active">
+    <div class="modal-content glass-panel">
+      <h2>Air Draw <span class="emoji-glow">✨</span></h2>
+      <p class="modal-subtitle">Draw in mid-air using real-time AI hand tracking.</p>
+
+      <div class="gestures-guide">
+        <div class="gesture-item">
+          <span class="gesture-icon">☝️</span>
+          <div><h3>Draw</h3><p>Index finger up — draws continuously.</p></div>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">✌️</span>
+          <div><h3>Change Color</h3><p>Two fingers to cycle the palette.</p></div>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">🖐️ move</span>
+          <div><h3>Erase Brush</h3><p>Open palm + move hand to erase.</p></div>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">🖐️ still</span>
+          <div><h3>Hold to Clear</h3><p>Hold open palm still 5 s → clears all.</p></div>
+        </div>
+        <div class="gesture-item">
+          <span class="gesture-icon">✊</span>
+          <div><h3>Pause</h3><p>Fist to stop all actions.</p></div>
+        </div>
+      </div>
+
+      <button id="start-btn" class="glass-btn primary lg">Start Drawing 🚀</button>
+    </div>
+  </div>
+
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header class="app-header glass-panel">
+    <div class="logo"><h1>Air Draw</h1></div>
+    <div class="header-status">
+      <span id="hand-status"   class="hand-status none">No Hand ❌</span>
+      <span id="gesture-label" class="badge idle">Idle 🤚</span>
+    </div>
+  </header>
+
+  <!-- ── Workspace ───────────────────────────────────────────── -->
+  <main class="workspace">
+
+    <!-- Canvas area -->
+    <div class="canvas-wrapper glass-panel">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="output_canvas"></canvas>
+
+      <div id="loading-overlay" class="loading-overlay active">
+        <div class="spinner"></div>
+        <p class="loading-text" id="loading-text">Initialising hand tracking&hellip;</p>
+      </div>
+    </div>
+
+    <!-- Controls sidebar -->
+    <aside class="controls-panel glass-panel">
+      <p class="panel-title">Tools</p>
+
+      <!-- Colour -->
+      <div class="control-group">
+        <label>Colour</label>
+        <div class="color-options">
+          <button class="color-btn active" data-color="#00FFAA" style="background:#00FFAA;box-shadow:0 0 10px #00FFAA80"></button>
+          <button class="color-btn"        data-color="#FF3366" style="background:#FF3366;box-shadow:0 0 10px #FF336680"></button>
+          <button class="color-btn"        data-color="#33CCFF" style="background:#33CCFF;box-shadow:0 0 10px #33CCFF80"></button>
+          <button class="color-btn"        data-color="#FFCC00" style="background:#FFCC00;box-shadow:0 0 10px #FFCC0080"></button>
+          <button class="color-btn"        data-color="#cc55ff" style="background:#cc55ff;box-shadow:0 0 10px #cc55ff80"></button>
+          <button class="color-btn"        data-color="#FFFFFF" style="background:#FFFFFF;box-shadow:0 0 10px #FFFFFF80"></button>
+        </div>
+      </div>
+
+      <!-- Brush size -->
+      <div class="control-group">
+        <label>Brush <span id="size-val">8</span> px</label>
+        <input type="range" id="brush-size" min="2" max="30" value="8" />
+      </div>
+
+      <!-- Glow -->
+      <div class="control-group">
+        <label>Glow <span id="glow-val">18</span> px</label>
+        <input type="range" id="glow-intensity" min="0" max="50" value="18" />
+      </div>
+
+      <!-- Eraser size -->
+      <div class="control-group">
+        <label>Eraser <span id="eraser-val">40</span> px</label>
+        <input type="range" id="eraser-size" min="10" max="100" value="40" />
+      </div>
+
+      <!-- Gesture cheatsheet -->
+      <div class="gesture-cheatsheet">
+        <p class="panel-title">Gestures</p>
+        <div class="cheat-row"><span>☝️</span>  Draw</div>
+        <div class="cheat-row"><span>✌️</span>  Next color</div>
+        <div class="cheat-row"><span>🖐️ move</span>  Erase brush</div>
+        <div class="cheat-row"><span>🖐️ still 5s</span>  Clear all</div>
+        <div class="cheat-row"><span>✊</span>  Pause</div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button id="undo-btn"     class="glass-btn secondary">↩ Undo</button>
+        <button id="clear-btn"    class="glass-btn secondary">🗑 Clear</button>
+        <button id="download-btn" class="glass-btn primary">⬇ Save PNG</button>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
