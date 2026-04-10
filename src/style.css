@@ -176,8 +176,17 @@ body {
   padding: 1.5rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
   overflow-y: auto;
+  transition: all 0.3s ease;
+}
+
+.panel-header-mobile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.6rem;
+  margin-bottom: 1.5rem;
 }
 
 .panel-title {
@@ -186,8 +195,22 @@ body {
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  padding-bottom: .6rem;
+}
+
+.mobile-toggle-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.3s;
+}
+
+.panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .control-group {
@@ -343,10 +366,30 @@ input[type="range"] {
   .controls-panel {
     width: 100%;
     height: auto;
+    padding: 1rem;
+    gap: 0;
+  }
+  .panel-header-mobile {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .mobile-toggle-btn {
+    display: block;
+  }
+  .panel-content {
     flex-direction: row;
     flex-wrap: wrap;
-    padding: 1rem;
     gap: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+  }
+  .controls-panel.collapsed .panel-content {
+    display: none;
+  }
+  .mobile-toggle-btn.collapsed {
+    transform: rotate(-90deg);
   }
   .actions { flex-direction: row; margin-top: 0; }
   .glass-btn { width: auto; }

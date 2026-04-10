@@ -27,6 +27,9 @@ export class UIManager {
     this.clearBtn    = document.getElementById('clear-btn');
     this.downloadBtn = document.getElementById('download-btn');
 
+    this.controlsPanel = document.getElementById('controls-panel');
+    this.togglePanelBtn = document.getElementById('toggle-panel-btn');
+
     this._toastTimer      = null;
     this._colorFlashTimer = null;
 
@@ -77,6 +80,11 @@ export class UIManager {
     this.downloadBtn?.addEventListener('click', () => {
       this.drawingEngine.download();
       this.showToast('⬇️ Saved as PNG');
+    });
+
+    this.togglePanelBtn?.addEventListener('click', () => {
+      this.controlsPanel?.classList.toggle('collapsed');
+      this.togglePanelBtn?.classList.toggle('collapsed');
     });
   }
 

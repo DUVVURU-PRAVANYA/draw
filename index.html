@@ -71,55 +71,60 @@
     </div>
 
     <!-- Controls sidebar -->
-    <aside class="controls-panel glass-panel">
-      <p class="panel-title">Tools</p>
+    <aside class="controls-panel glass-panel" id="controls-panel">
+      <div class="panel-header-mobile">
+        <p class="panel-title">Tools</p>
+        <button id="toggle-panel-btn" class="mobile-toggle-btn">🔽</button>
+      </div>
 
-      <!-- Colour -->
-      <div class="control-group">
-        <label>Colour</label>
-        <div class="color-options">
-          <button class="color-btn active" data-color="#00FFAA" style="background:#00FFAA;box-shadow:0 0 10px #00FFAA80"></button>
-          <button class="color-btn"        data-color="#FF3366" style="background:#FF3366;box-shadow:0 0 10px #FF336680"></button>
-          <button class="color-btn"        data-color="#33CCFF" style="background:#33CCFF;box-shadow:0 0 10px #33CCFF80"></button>
-          <button class="color-btn"        data-color="#FFCC00" style="background:#FFCC00;box-shadow:0 0 10px #FFCC0080"></button>
-          <button class="color-btn"        data-color="#cc55ff" style="background:#cc55ff;box-shadow:0 0 10px #cc55ff80"></button>
-          <button class="color-btn"        data-color="#FFFFFF" style="background:#FFFFFF;box-shadow:0 0 10px #FFFFFF80"></button>
+      <div class="panel-content" id="panel-content">
+        <!-- Colour -->
+        <div class="control-group">
+          <label>Colour</label>
+          <div class="color-options">
+            <button class="color-btn active" data-color="#00FFAA" style="background:#00FFAA;box-shadow:0 0 10px #00FFAA80"></button>
+            <button class="color-btn"        data-color="#FF3366" style="background:#FF3366;box-shadow:0 0 10px #FF336680"></button>
+            <button class="color-btn"        data-color="#33CCFF" style="background:#33CCFF;box-shadow:0 0 10px #33CCFF80"></button>
+            <button class="color-btn"        data-color="#FFCC00" style="background:#FFCC00;box-shadow:0 0 10px #FFCC0080"></button>
+            <button class="color-btn"        data-color="#cc55ff" style="background:#cc55ff;box-shadow:0 0 10px #cc55ff80"></button>
+            <button class="color-btn"        data-color="#FFFFFF" style="background:#FFFFFF;box-shadow:0 0 10px #FFFFFF80"></button>
+          </div>
         </div>
-      </div>
 
-      <!-- Brush size -->
-      <div class="control-group">
-        <label>Brush <span id="size-val">8</span> px</label>
-        <input type="range" id="brush-size" min="2" max="30" value="8" />
-      </div>
+        <!-- Brush size -->
+        <div class="control-group">
+          <label>Brush <span id="size-val">8</span> px</label>
+          <input type="range" id="brush-size" min="2" max="30" value="8" />
+        </div>
 
-      <!-- Glow -->
-      <div class="control-group">
-        <label>Glow <span id="glow-val">18</span> px</label>
-        <input type="range" id="glow-intensity" min="0" max="50" value="18" />
-      </div>
+        <!-- Glow -->
+        <div class="control-group">
+          <label>Glow <span id="glow-val">18</span> px</label>
+          <input type="range" id="glow-intensity" min="0" max="50" value="18" />
+        </div>
 
-      <!-- Eraser size -->
-      <div class="control-group">
-        <label>Eraser <span id="eraser-val">40</span> px</label>
-        <input type="range" id="eraser-size" min="10" max="100" value="40" />
-      </div>
+        <!-- Eraser size -->
+        <div class="control-group">
+          <label>Eraser <span id="eraser-val">40</span> px</label>
+          <input type="range" id="eraser-size" min="10" max="100" value="40" />
+        </div>
 
-      <!-- Gesture cheatsheet -->
-      <div class="gesture-cheatsheet">
-        <p class="panel-title">Gestures</p>
-        <div class="cheat-row"><span>☝️</span>  Draw</div>
-        <div class="cheat-row"><span>✌️</span>  Next color</div>
-        <div class="cheat-row"><span>🖐️ move</span>  Erase brush</div>
-        <div class="cheat-row"><span>🖐️ still 5s</span>  Clear all</div>
-        <div class="cheat-row"><span>✊</span>  Pause</div>
-      </div>
+        <!-- Gesture cheatsheet -->
+        <div class="gesture-cheatsheet">
+          <p class="panel-title">Gestures</p>
+          <div class="cheat-row"><span>☝️</span>  Draw</div>
+          <div class="cheat-row"><span>✌️</span>  Next color</div>
+          <div class="cheat-row"><span>🖐️ move</span>  Erase brush</div>
+          <div class="cheat-row"><span>🖐️ still 5s</span>  Clear all</div>
+          <div class="cheat-row"><span>✊</span>  Pause</div>
+        </div>
 
-      <!-- Actions -->
-      <div class="actions">
-        <button id="undo-btn"     class="glass-btn secondary">↩ Undo</button>
-        <button id="clear-btn"    class="glass-btn secondary">🗑 Clear</button>
-        <button id="download-btn" class="glass-btn primary">⬇ Save PNG</button>
+        <!-- Actions -->
+        <div class="actions">
+          <button id="undo-btn"     class="glass-btn secondary">↩ Undo</button>
+          <button id="clear-btn"    class="glass-btn secondary">🗑 Clear</button>
+          <button id="download-btn" class="glass-btn primary">⬇ Save PNG</button>
+        </div>
       </div>
     </aside>
   </main>
