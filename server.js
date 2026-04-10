@@ -4,19 +4,27 @@
 
 import { createServer } from 'http';
 import { Server }       from 'socket.io';
+import express          from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const PORT = 3001;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const httpServer = createServer((req, res) => {
-  // Basic health-check endpoint — useful for debugging connectivity
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', rooms: rooms.size }));
-    return;
-  }
-  res.writeHead(404);
-  res.end();
+const PORT = process.env.PORT || 3001;
+
+const app = express();
+app.use(express.static(join(__dirname, 'dist')));
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', rooms: rooms.size });
 });
+
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
+});
+
+const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
@@ -118,5 +126,5 @@ httpServer.listen(PORT, () => {
 ║       Health: http://localhost:${PORT}/health ║
 ╚═══════════════════════════════════════╝
   `);
-  console.log('Run "npm run dev" in a separate terminal for the Vite dev server.\n');
+  console.log('Run "npm run dev" in a separate terminal for the Vite dev server.');
 });
