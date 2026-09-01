@@ -5,38 +5,38 @@ export class HandTrackingEngine {
     this.video          = videoElement;
     this.handLandmarker = null;
     this.lastVideoTime  = -1;
-    this.lastResults    = null;   // cached — returned on identical video frames
-    this._missedFrames  = 0;      // consecutive frames with no detection
-    this._maxMissed     = 4;      // after N misses, clear cache (real absence)
+    this.lastResults    = null;
+    this._missedFrames  = 0;
+    this._maxMissed     = 4;
   }
 
   /**
-   * Initialize hand landmarker and camera.
-   * @param {function} onProgress - callback(message) for loading steps
+   * Initialize hand landmarker and camera feed.
+   * @param {function} onProgress - callback(message, percent)
    */
   async initialize(onProgress) {
-    onProgress?.('Downloading AI model…');
+    onProgress?.('INITIALIZING VISION ENGINE...', 20);
     const vision = await FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
     );
 
-    onProgress?.('Building hand landmarker…');
+    onProgress?.('LOADING HAND LANDMARK MODEL...', 55);
     this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath:
           'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
         delegate: 'GPU'
       },
-      runningMode:                  'VIDEO',
-      numHands:                     1,          // track only 1 hand → faster
-      minHandDetectionConfidence:   0.55,       // slightly lower → fewer misses
-      minHandPresenceConfidence:    0.55,
-      minTrackingConfidence:        0.45        // more lenient tracking
+      runningMode:                'VIDEO',
+      numHands:                   1,
+      minHandDetectionConfidence: 0.55,
+      minHandPresenceConfidence:  0.55,
+      minTrackingConfidence:      0.45
     });
 
-    onProgress?.('Starting camera (640×480)…');
+    onProgress?.('CALIBRATING SPATIAL INPUT (640×480)...', 85);
     await this._initCamera();
-    onProgress?.('Ready!');
+    onProgress?.('SYSTEM READY', 100);
   }
 
   async _initCamera() {
@@ -60,18 +60,11 @@ export class HandTrackingEngine {
   }
 
   /**
-   * Run detection. Returns the latest valid result (fresh or cached).
-   *
-   * Caching strategy:
-   *   - If video frame hasn't changed → return last result (no ML cost).
-   *   - If ML returns empty landmarks for _maxMissed consecutive frames
-   *     → treat as genuine absence, clear cache so drawing stops cleanly.
-   *   - Otherwise keep the last good result to bridge brief occlusions.
+   * Run detection with frame caching and brief occlusion bridge.
    */
   detect(nowInMs) {
     if (!this.handLandmarker || !this.video) return this.lastResults;
 
-    // Only run ML when there's a new video frame
     if (this.video.currentTime !== this.lastVideoTime) {
       this.lastVideoTime = this.video.currentTime;
 
@@ -79,20 +72,16 @@ export class HandTrackingEngine {
         const fresh = this.handLandmarker.detectForVideo(this.video, nowInMs);
 
         if (fresh?.landmarks?.length) {
-          // Good detection — reset miss counter, update cache
           this._missedFrames = 0;
           this.lastResults   = fresh;
         } else {
-          // Empty result — increment miss counter
           this._missedFrames++;
           if (this._missedFrames >= this._maxMissed) {
-            // Genuine absence after N consecutive misses
-            this.lastResults = fresh;  // will have empty landmarks
+            this.lastResults = fresh;
           }
-          // else: keep last good result (bridge brief occlusion)
         }
       } catch (e) {
-        // Silently ignore detection errors (timing jitter, etc.)
+        // Silently handle transient timing jitter
       }
     }
 

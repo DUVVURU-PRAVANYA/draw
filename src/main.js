@@ -1,43 +1,42 @@
+// ── AERIX SPATIAL OS MAIN CONTROLLER ──────────────────────────────────────
 import './style.css';
 import { HandTrackingEngine } from './handTracking.js';
 import { GestureEngine }      from './gesture.js';
 import { DrawingEngine }      from './drawing.js';
 import { UIManager }          from './ui.js';
+import { io }                 from 'socket.io-client';
 
-// ═══════════════════════════════════════════════════════════════
-// DOM REFS
-// ═══════════════════════════════════════════════════════════════
+// ── DOM References ─────────────────────────────────────────────────────────
 const video  = document.getElementById('webcam');
 const canvas = document.getElementById('output_canvas');
 
-// ═══════════════════════════════════════════════════════════════
-// ENGINES
-// ═══════════════════════════════════════════════════════════════
+// ── Engines ────────────────────────────────────────────────────────────────
 let handEngine;
 let gestureEngine;
 let drawingEngine;
 let uiManager;
+let socket = null;
 
-// ═══════════════════════════════════════════════════════════════
-// RUNTIME STATE
-// ═══════════════════════════════════════════════════════════════
+// ── Runtime State ──────────────────────────────────────────────────────────
 let isAppRunning    = false;
 let isDrawingActive = false;
 let isErasing       = false;
+let currentRoom     = 'default';
 
-// ── Frame skipping ────────────────────────────────────────────
-// rAF runs ~60fps; camera is 30fps. Only run ML on even frames.
-let frameCount = 0;
+// ── Frame skipping & Telemetry ─────────────────────────────────────────────
+let frameCount    = 0;
+let lastFpsTime   = performance.now();
+let fpsFrames     = 0;
+let currentFps    = 60;
 
-// ── Position smoothing: 0.7 old + 0.3 new ────────────────────
-// Light enough for near-zero lag, heavy enough to kill jitter.
-const SMOOTH = 0.7;
+// ── Position smoothing: 0.7 old + 0.3 new ─────────────────────────────────
+let smoothFactor = 0.7;
 let smoothX = null, smoothY = null;
 
-// ── Smart erase state ─────────────────────────────────────────
-const ERASE_HOLD_MS  = 5000;   // hold still → full clear
-const ERASE_STILL_PX = 10;     // px movement threshold
-const ERASE_CHECK_MS = 200;    // movement sample interval
+// ── Smart Erase Controller ─────────────────────────────────────────────────
+const ERASE_HOLD_MS  = 5000;
+const ERASE_STILL_PX = 10;
+const ERASE_CHECK_MS = 200;
 
 let eraseStillStart   = null;
 let eraseIsMoving     = false;
@@ -47,11 +46,11 @@ let _eraseCheckTime   = 0;
 let _lastCountdownSec = -1;
 let _eraseFirstCheck  = true;
 
-// ── Color palette ─────────────────────────────────────────────
-const PALETTE  = ['#00FFAA', '#FF3366', '#33CCFF', '#FFCC00', '#cc55ff', '#FFFFFF'];
-let paletteIdx = 0;
+// ── Spectrum Palette ───────────────────────────────────────────────────────
+const SPECTRUM_PALETTE = ['#00FFAA', '#38BDF8', '#8B5CF6', '#06B6D4', '#FF3366', '#FFCC00', '#FFFFFF'];
+let spectrumIdx = 0;
 
-// ── Skeleton connections ──────────────────────────────────────
+// ── Skeleton Connections ───────────────────────────────────────────────────
 const CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4],
   [0,5],[5,6],[6,7],[7,8],
@@ -61,72 +60,144 @@ const CONNECTIONS = [
   [5,9],[9,13],[13,17]
 ];
 
-// ═══════════════════════════════════════════════════════════════
-// SKELETON RENDERER
-// ═══════════════════════════════════════════════════════════════
-function drawSkeleton(landmarks) {
+// ── Skeleton Renderer ──────────────────────────────────────────────────────
+function drawHolographicSkeleton(landmarks) {
+  const showSkeleton = document.getElementById('setting-skeleton')?.checked ?? true;
+  if (!showSkeleton) return;
+
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
 
   ctx.save();
   ctx.lineWidth   = 1.5;
-  ctx.strokeStyle = 'rgba(0,255,200,0.3)';
-  ctx.shadowBlur  = 4;
-  ctx.shadowColor = '#00FFC8';
+  ctx.strokeStyle = 'rgba(6, 182, 212, 0.35)';
+  ctx.shadowBlur  = 6;
+  ctx.shadowColor = '#06B6D4';
 
   for (const [a, b] of CONNECTIONS) {
     ctx.beginPath();
-    // Direct mapping — CSS scaleX(-1) on canvas handles visual mirror
     ctx.moveTo(landmarks[a].x * w, landmarks[a].y * h);
     ctx.lineTo(landmarks[b].x * w, landmarks[b].y * h);
     ctx.stroke();
   }
 
-  ctx.shadowBlur = 8;
   for (let i = 0; i < landmarks.length; i++) {
-    // Landmark 8 = index fingertip → highlight in yellow
-    ctx.fillStyle = (i === 8) ? '#FFCC00' : '#00FFC8';
-    ctx.beginPath();
-    ctx.arc(landmarks[i].x * w, landmarks[i].y * h, i === 8 ? 5 : 2.5, 0, Math.PI * 2);
-    ctx.fill();
+    // Fingertip 8 = Index tip -> highlight with glowing emerald halo
+    if (i === 8) {
+      ctx.fillStyle   = '#00FFAA';
+      ctx.shadowBlur  = 12;
+      ctx.shadowColor = '#00FFAA';
+      ctx.beginPath();
+      ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle   = 'rgba(139, 92, 246, 0.8)';
+      ctx.shadowBlur  = 4;
+      ctx.shadowColor = '#8B5CF6';
+      ctx.beginPath();
+      ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
-  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
-// ═══════════════════════════════════════════════════════════════
-// APP INIT
-// ═══════════════════════════════════════════════════════════════
-async function startApp() {
-  isAppRunning = true;
+// ── App Initialization ─────────────────────────────────────────────────────
+async function startAerix() {
+  try {
+    isAppRunning = true;
+    handEngine = new HandTrackingEngine(video);
 
-  handEngine = new HandTrackingEngine(video);
-  await handEngine.initialize(msg => uiManager?.setLoadingText(msg));
-  uiManager?.hideLoading();
+    await handEngine.initialize((msg, pct) => {
+      uiManager.setLoadingProgress(msg, pct);
+    });
 
-  // Match canvas resolution to camera output
-  const resizeCanvas = () => {
-    const w = video.videoWidth  || 640;
-    const h = video.videoHeight || 480;
-    drawingEngine.resize(w, h);
-  };
-  resizeCanvas();
-  video.addEventListener('loadedmetadata', resizeCanvas);
+    uiManager.hidePortal();
+    uiManager.showToast('🚀 AERIX SPATIAL WORKSPACE READY');
 
-  requestAnimationFrame(renderLoop);
+    // Match resolution to camera stream
+    const resizeCanvas = () => {
+      const w = video.videoWidth  || 640;
+      const h = video.videoHeight || 480;
+      drawingEngine.resize(w, h);
+    };
+    resizeCanvas();
+    video.addEventListener('loadedmetadata', resizeCanvas);
+
+    // Initialize Multiplayer Socket
+    initMultiplayer();
+
+    requestAnimationFrame(renderLoop);
+  } catch (err) {
+    console.error('AERIX Launch Error:', err);
+    uiManager.showToast('⚠️ Camera permission denied or device busy');
+  }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// MAIN RENDER LOOP  (requestAnimationFrame)
-// ═══════════════════════════════════════════════════════════════
+// ── Multiplayer Client ─────────────────────────────────────────────────────
+function initMultiplayer() {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    currentRoom = urlParams.get('room') || 'default';
+    if (uiManager.liveRoomInput) uiManager.liveRoomInput.value = currentRoom;
+
+    // Connect to server (port 3001 in dev or origin)
+    const serverUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    socket = io(serverUrl, { transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => {
+      socket.emit('joinRoom', { room: currentRoom });
+      uiManager.showToast(`🛰️ CONNECTED TO LIVE SPACE: ${currentRoom.toUpperCase()}`);
+    });
+
+    socket.on('roomUpdate', ({ count }) => {
+      uiManager.updateLiveUsers(count);
+    });
+
+    socket.on('remoteDraw', (data) => {
+      drawingEngine.receiveRemoteDraw(data);
+    });
+
+    socket.on('remoteStroke', (data) => {
+      drawingEngine.receiveRemoteStroke(data);
+    });
+
+    socket.on('remoteClear', () => {
+      drawingEngine.receiveRemoteClear();
+      uiManager.flashDissolve();
+    });
+
+    socket.on('remoteCursorLeave', ({ id }) => {
+      drawingEngine.removeRemoteCursor(id);
+    });
+  } catch (e) {
+    console.warn('Multiplayer unavailable (offline mode):', e);
+  }
+}
+
+function switchRoom(newRoom) {
+  if (!socket || !newRoom) return;
+  currentRoom = newRoom;
+  socket.emit('joinRoom', { room: currentRoom });
+}
+
+// ── Main Render Loop (60 FPS) ──────────────────────────────────────────────
 function renderLoop(time) {
   if (!isAppRunning) return;
 
-  // ── Frame skipping: ML only on even frames ─────────────────
+  // FPS calculation
+  fpsFrames++;
+  if (time - lastFpsTime >= 1000) {
+    currentFps = Math.round((fpsFrames * 1000) / (time - lastFpsTime));
+    fpsFrames   = 0;
+    lastFpsTime = time;
+  }
+
+  // Frame skipping: ML inference on even frames (~30Hz)
   frameCount++;
   const results = (frameCount % 2 === 0)
-    ? handEngine.detect(performance.now())  // run ML
-    : handEngine.lastResults;               // use cached
+    ? handEngine.detect(performance.now())
+    : handEngine.lastResults;
 
   const hasHand = !!(results?.landmarks?.length);
   let gesture   = 'IDLE';
@@ -134,53 +205,79 @@ function renderLoop(time) {
 
   if (hasHand) {
     gesture = gestureEngine.analyze(results.landmarks);
-    uiManager.updateGestureLabel(gesture, true);
 
-    drawSkeleton(results.landmarks[0]);
+    // Draw holographic bone joints
+    drawHolographicSkeleton(results.landmarks[0]);
 
-    // ── Coordinate mapping ─────────────────────────────────
-    // x = landmark.x * canvas.width  (direct — no pre-flip)
-    // y = landmark.y * canvas.height
-    // CSS scaleX(-1) on #output_canvas mirrors visually so
-    // finger left→ appears left, finger right→ appears right.
+    // Fingertip 8 coordinates
     const tip = results.landmarks[0][8];
     const tx  = tip.x * canvas.width;
     const ty  = tip.y * canvas.height;
 
-    // ── Exponential smoothing (single pass) ────────────────
-    if (smoothX === null) { smoothX = tx; smoothY = ty; }
-    else {
-      smoothX = smoothX * SMOOTH + tx * (1 - SMOOTH);
-      smoothY = smoothY * SMOOTH + ty * (1 - SMOOTH);
+    // Exponential moving average smoothing
+    if (smoothX === null) {
+      smoothX = tx; smoothY = ty;
+    } else {
+      smoothX = smoothX * smoothFactor + tx * (1 - smoothFactor);
+      smoothY = smoothY * smoothFactor + ty * (1 - smoothFactor);
     }
     rawX = smoothX;
     rawY = smoothY;
 
     drawingEngine.addTrailPoint(rawX, rawY);
 
-    // ── Gesture dispatch ───────────────────────────────────
-    switch (gesture) {
+    // Broadcast cursor telemetry
+    if (socket && document.getElementById('setting-multiplayer-cursor')?.checked) {
+      if (frameCount % 3 === 0) {
+        socket.emit('cursor', {
+          room: currentRoom,
+          x: rawX,
+          y: rawY,
+          color: drawingEngine.currentColor
+        });
+      }
+    }
 
+    // ── Gesture State Machine ──────────────────────────────────────────────
+    switch (gesture) {
       case 'DRAW': {
         _resetErase();
         uiManager.clearCountdown();
+
         if (!isDrawingActive) {
           drawingEngine.startLine(rawX, rawY);
           isDrawingActive = true;
         } else {
           drawingEngine.addPoint(rawX, rawY);
         }
+
+        // Multiplayer live draw point
+        if (socket) {
+          socket.emit('draw', {
+            room: currentRoom,
+            x: rawX,
+            y: rawY,
+            isDrawing: true,
+            color: drawingEngine.currentColor,
+            size: drawingEngine.currentSize,
+            glow: drawingEngine.currentGlow
+          });
+        }
         break;
       }
 
       case 'ERASE': {
         if (isDrawingActive) {
+          const committedLine = drawingEngine.currentLine;
           drawingEngine.endLine();
           isDrawingActive = false;
+          if (socket && committedLine) {
+            socket.emit('stroke', { room: currentRoom, ...committedLine });
+          }
         }
         isErasing = true;
 
-        // Sample movement every ERASE_CHECK_MS to decide brush vs hold
+        // Sample movement to distinguish brush erase vs. 5s hold-to-clear
         const now = performance.now();
         if (now - _eraseCheckTime > ERASE_CHECK_MS) {
           if (_eraseCheckX !== null && !_eraseFirstCheck) {
@@ -194,69 +291,82 @@ function renderLoop(time) {
         }
 
         if (eraseIsMoving) {
-          // Moving hand → brush erase
           drawingEngine.eraseAt(rawX, rawY);
           eraseStillStart   = null;
           _lastCountdownSec = -1;
           uiManager.clearCountdown();
+          if (socket) socket.emit('erase', { room: currentRoom, x: rawX, y: rawY });
         } else {
-          // Still hand → countdown to full clear
           if (!eraseStillStart) eraseStillStart = now;
           const elapsed  = now - eraseStillStart;
           const secsLeft = Math.ceil((ERASE_HOLD_MS - elapsed) / 1000);
+
           if (elapsed >= ERASE_HOLD_MS) {
             drawingEngine.clear(true);
             uiManager.clearCountdown();
-            uiManager.showToast('🗑️ Canvas Cleared!');
+            uiManager.flashDissolve();
+            uiManager.showToast('🗑️ CANVAS DISSOLVED');
+            if (socket) socket.emit('clear', { room: currentRoom });
             eraseStillStart   = null;
             eraseIsMoving     = false;
             _lastCountdownSec = -1;
           } else if (secsLeft !== _lastCountdownSec) {
             _lastCountdownSec = secsLeft;
-            uiManager.showCountdown(`🖐️ Hold to Clear… ${secsLeft}s`);
+            uiManager.showCountdown(`🖐️ DISSOLVING CANVAS… ${secsLeft}s`);
           }
         }
         break;
       }
 
       default: {
-        // PEACE / IDLE — end any active stroke or erase
+        // PEACE / IDLE
         _resetErase();
         uiManager.clearCountdown();
         if (isDrawingActive) {
+          const committedLine = drawingEngine.currentLine;
           drawingEngine.endLine();
           isDrawingActive = false;
+          if (socket && committedLine) {
+            socket.emit('stroke', { room: currentRoom, ...committedLine });
+          }
         }
         break;
       }
     }
-
   } else {
-    // No hand detected — clean slate
-    uiManager.updateGestureLabel('IDLE', false);
+    // Hand away
     uiManager.clearCountdown();
     _resetErase();
     if (isDrawingActive) {
+      const committedLine = drawingEngine.currentLine;
       drawingEngine.endLine();
       isDrawingActive = false;
+      if (socket && committedLine) {
+        socket.emit('stroke', { room: currentRoom, ...committedLine });
+      }
     }
     smoothX = null;
     smoothY = null;
   }
 
-  // Palm-hold progress ring
+  // Hold-to-dissolve radial progress calculation
   let holdProgress = 0;
   if (isErasing && !eraseIsMoving && eraseStillStart !== null) {
     holdProgress = Math.min(1, (performance.now() - eraseStillStart) / ERASE_HOLD_MS);
   }
 
+  // Update telemetry HUD
+  uiManager.updateTelemetry({
+    fps: currentFps,
+    confidence: gestureEngine.confidenceScore,
+    handDetected: hasHand,
+    gesture
+  });
+
   drawingEngine.render(rawX, rawY, gesture, hasHand, holdProgress);
   requestAnimationFrame(renderLoop);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════
 function _resetErase() {
   if (isErasing) { drawingEngine.endErase(); isErasing = false; }
   eraseStillStart  = null;
@@ -268,25 +378,48 @@ function _resetErase() {
   _lastCountdownSec = -1;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// BOOTSTRAP
-// ═══════════════════════════════════════════════════════════════
+// ── Keyboard Shortcuts ─────────────────────────────────────────────────────
+function initKeyboardShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      drawingEngine.undo();
+      uiManager.showToast('↩ STROKE UNDONE');
+    } else if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      drawingEngine.download();
+      uiManager.showToast('⬇️ CAPTURED & SAVED');
+    } else if (e.key.toLowerCase() === 'c' || e.key === 'Delete') {
+      e.preventDefault();
+      drawingEngine.clear(true);
+      uiManager.flashDissolve();
+      uiManager.showToast('🗑️ CANVAS DISSOLVED');
+    }
+  });
+}
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   gestureEngine = new GestureEngine();
   drawingEngine = new DrawingEngine(canvas, 640, 480);
 
-  // ✌️ Peace → cycle color
+  // ✌️ Peace Gesture -> Cycle Spectrum Palette
   gestureEngine.onPeaceGesture = () => {
-    paletteIdx = (paletteIdx + 1) % PALETTE.length;
-    const color = PALETTE[paletteIdx];
+    spectrumIdx = (spectrumIdx + 1) % SPECTRUM_PALETTE.length;
+    const color = SPECTRUM_PALETTE[spectrumIdx];
     drawingEngine.setColor(color);
     uiManager.flashColorChange(color);
-    document.querySelectorAll('.color-btn').forEach((btn, i) =>
-      btn.classList.toggle('active', i === paletteIdx)
-    );
+    document.querySelectorAll('.spectrum-swatch').forEach((swatch, idx) => {
+      swatch.classList.toggle('active', idx === spectrumIdx);
+    });
+    uiManager.showToast(`SPECTRUM CYCLED: ${color}`);
   };
 
   uiManager = new UIManager(drawingEngine, {
-    onStart: () => startApp().catch(e => console.error('Start error:', e))
+    onStart: () => startAerix(),
+    onSwitchRoom: (newRoom) => switchRoom(newRoom),
+    onSmoothChange: (val) => { smoothFactor = val; }
   });
+
+  initKeyboardShortcuts();
 });

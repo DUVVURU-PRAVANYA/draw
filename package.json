@@ -15,6 +15,7 @@
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.34",
     "express": "^5.2.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   }
 }

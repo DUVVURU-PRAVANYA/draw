@@ -2,134 +2,726 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Air Draw — Gesture Doodler</title>
-  <meta name="description" content="Draw in mid-air with real-time AI hand tracking. No lag, no server required." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AERIX — AI Touchless Creative Workspace</title>
+  <meta name="description" content="AERIX: Create Beyond Touch. AI-Powered touchless creative workspace with real-time computer vision hand tracking and spatial computing interfaces." />
+  
+  <!-- Premium Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/src/style.css">
 </head>
-<body>
-<div id="app">
+<body class="aerix-root">
 
-  <!-- ── Global overlays ─────────────────────────────────────── -->
-  <div id="color-flash"></div>
-  <div id="toast"></div>
-  <div id="countdown-badge"></div>
-
-  <!-- ── Onboarding modal ────────────────────────────────────── -->
-  <div id="onboarding-modal" class="modal-overlay active">
-    <div class="modal-content glass-panel">
-      <h2>Air Draw <span class="emoji-glow">✨</span></h2>
-      <p class="modal-subtitle">Draw in mid-air using real-time AI hand tracking.</p>
-
-      <div class="gestures-guide">
-        <div class="gesture-item">
-          <span class="gesture-icon">☝️</span>
-          <div><h3>Draw</h3><p>Index finger up — draws continuously.</p></div>
-        </div>
-        <div class="gesture-item">
-          <span class="gesture-icon">✌️</span>
-          <div><h3>Change Color</h3><p>Two fingers to cycle the palette.</p></div>
-        </div>
-        <div class="gesture-item">
-          <span class="gesture-icon">🖐️ move</span>
-          <div><h3>Erase Brush</h3><p>Open palm + move hand to erase.</p></div>
-        </div>
-        <div class="gesture-item">
-          <span class="gesture-icon">🖐️ still</span>
-          <div><h3>Hold to Clear</h3><p>Hold open palm still 5 s → clears all.</p></div>
-        </div>
-        <div class="gesture-item">
-          <span class="gesture-icon">✊</span>
-          <div><h3>Pause</h3><p>Fist to stop all actions.</p></div>
-        </div>
-      </div>
-
-      <button id="start-btn" class="glass-btn primary lg">Start Drawing 🚀</button>
-    </div>
+  <!-- ── Custom Spatial Cursor ──────────────────────────────────────── -->
+  <div id="spatial-cursor" class="spatial-cursor">
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+    <div class="cursor-trail"></div>
+    <div class="cursor-label" id="cursor-label">POINTER</div>
   </div>
 
-  <!-- ── Header ──────────────────────────────────────────────── -->
-  <header class="app-header glass-panel">
-    <div class="logo"><h1>Air Draw</h1></div>
-    <div class="header-status">
-      <span id="hand-status"   class="hand-status none">No Hand ❌</span>
-      <span id="gesture-label" class="badge idle">Idle 🤚</span>
-    </div>
-  </header>
+  <!-- ── Background Atmospheric Layers ──────────────────────────────── -->
+  <div class="space-ambient">
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-grid"></div>
+    <div class="ambient-noise"></div>
+  </div>
 
-  <!-- ── Workspace ───────────────────────────────────────────── -->
-  <main class="workspace">
+  <!-- ── Global HUD Overlays & Feedback ─────────────────────────────── -->
+  <div id="color-flash" class="color-flash"></div>
+  <div id="toast-container" class="toast-container"></div>
+  <div id="dissolve-overlay" class="dissolve-overlay"></div>
 
-    <!-- Canvas area -->
-    <div class="canvas-wrapper glass-panel">
-      <video id="webcam" autoplay playsinline muted></video>
-      <canvas id="output_canvas"></canvas>
-
-      <div id="loading-overlay" class="loading-overlay active">
-        <div class="spinner"></div>
-        <p class="loading-text" id="loading-text">Initialising hand tracking&hellip;</p>
-      </div>
-    </div>
-
-    <!-- Controls sidebar -->
-    <aside class="controls-panel glass-panel" id="controls-panel">
-      <div class="panel-header-mobile">
-        <p class="panel-title">Tools</p>
-        <button id="toggle-panel-btn" class="mobile-toggle-btn">🔽</button>
+  <!-- ═══════════════════════════════════════════════════════════════════
+       1. LANDING & ONBOARDING PORTAL (Hero Welcome Deck)
+       ═══════════════════════════════════════════════════════════════════ -->
+  <section id="onboarding-portal" class="onboarding-portal active">
+    <div class="portal-backdrop"></div>
+    
+    <div class="portal-container">
+      <!-- Brand & Headline -->
+      <div class="brand-badge-pill">
+        <span class="pulse-beacon"></span>
+        <span class="badge-text">SPATIAL COMPUTING OS &bull; V2.6</span>
       </div>
 
-      <div class="panel-content" id="panel-content">
-        <!-- Colour -->
-        <div class="control-group">
-          <label>Colour</label>
-          <div class="color-options">
-            <button class="color-btn active" data-color="#00FFAA" style="background:#00FFAA;box-shadow:0 0 10px #00FFAA80"></button>
-            <button class="color-btn"        data-color="#FF3366" style="background:#FF3366;box-shadow:0 0 10px #FF336680"></button>
-            <button class="color-btn"        data-color="#33CCFF" style="background:#33CCFF;box-shadow:0 0 10px #33CCFF80"></button>
-            <button class="color-btn"        data-color="#FFCC00" style="background:#FFCC00;box-shadow:0 0 10px #FFCC0080"></button>
-            <button class="color-btn"        data-color="#cc55ff" style="background:#cc55ff;box-shadow:0 0 10px #cc55ff80"></button>
-            <button class="color-btn"        data-color="#FFFFFF" style="background:#FFFFFF;box-shadow:0 0 10px #FFFFFF80"></button>
+      <h1 class="portal-title">
+        <span class="title-main">AERIX</span>
+        <span class="title-tagline">CREATE BEYOND TOUCH.</span>
+      </h1>
+
+      <p class="portal-sub">AI-POWERED TOUCHLESS CREATIVE WORKSPACE</p>
+
+      <!-- Holographic Interactive Guide -->
+      <div class="portal-gestures-grid">
+        <div class="gesture-card" data-gesture="draw">
+          <div class="gesture-icon-orb">☝️</div>
+          <div class="gesture-info">
+            <span class="gesture-badge">PEN MODE</span>
+            <h4>Continuous Draw</h4>
+            <p>Raise index finger only to paint glowing spatial strokes in mid-air.</p>
           </div>
         </div>
 
-        <!-- Brush size -->
-        <div class="control-group">
-          <label>Brush <span id="size-val">8</span> px</label>
-          <input type="range" id="brush-size" min="2" max="30" value="8" />
+        <div class="gesture-card" data-gesture="peace">
+          <div class="gesture-icon-orb">✌️</div>
+          <div class="gesture-info">
+            <span class="gesture-badge">SPECTRUM</span>
+            <h4>Cycle Color</h4>
+            <p>Flash peace sign to cycle through the curated neon spectrum.</p>
+          </div>
         </div>
 
-        <!-- Glow -->
-        <div class="control-group">
-          <label>Glow <span id="glow-val">18</span> px</label>
-          <input type="range" id="glow-intensity" min="0" max="50" value="18" />
+        <div class="gesture-card" data-gesture="erase">
+          <div class="gesture-icon-orb">🖐️</div>
+          <div class="gesture-info">
+            <span class="gesture-badge">DISSOLVE</span>
+            <h4>Smart Erase</h4>
+            <p>Move open palm to brush erase; hold still 5s to dissolve the canvas.</p>
+          </div>
         </div>
 
-        <!-- Eraser size -->
-        <div class="control-group">
-          <label>Eraser <span id="eraser-val">40</span> px</label>
-          <input type="range" id="eraser-size" min="10" max="100" value="40" />
-        </div>
-
-        <!-- Gesture cheatsheet -->
-        <div class="gesture-cheatsheet">
-          <p class="panel-title">Gestures</p>
-          <div class="cheat-row"><span>☝️</span>  Draw</div>
-          <div class="cheat-row"><span>✌️</span>  Next color</div>
-          <div class="cheat-row"><span>🖐️ move</span>  Erase brush</div>
-          <div class="cheat-row"><span>🖐️ still 5s</span>  Clear all</div>
-          <div class="cheat-row"><span>✊</span>  Pause</div>
-        </div>
-
-        <!-- Actions -->
-        <div class="actions">
-          <button id="undo-btn"     class="glass-btn secondary">↩ Undo</button>
-          <button id="clear-btn"    class="glass-btn secondary">🗑 Clear</button>
-          <button id="download-btn" class="glass-btn primary">⬇ Save PNG</button>
+        <div class="gesture-card" data-gesture="pause">
+          <div class="gesture-icon-orb">✊</div>
+          <div class="gesture-info">
+            <span class="gesture-badge">STANDBY</span>
+            <h4>Hold & Pause</h4>
+            <p>Clench fist to freeze tracking and hover cursor without drawing.</p>
+          </div>
         </div>
       </div>
-    </aside>
-  </main>
-</div>
 
-<script type="module" src="/src/main.js"></script>
+      <!-- Action Prompt -->
+      <div class="portal-action-zone">
+        <div class="hand-prompt">
+          <span class="wave-hand">✋</span>
+          <span>RAISE YOUR HAND TO INITIALIZE VISION</span>
+        </div>
+
+        <button id="start-btn" class="aerix-btn-primary magnetic-btn">
+          <span class="btn-glow"></span>
+          <span class="btn-text">ENTER CREATIVE SPACE</span>
+          <svg class="btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Loading Telemetry Modal (Inside Portal) -->
+      <div id="loading-overlay" class="loading-overlay">
+        <div class="loader-visual">
+          <div class="loader-ring"></div>
+          <div class="loader-core"></div>
+        </div>
+        <div class="loader-telemetry">
+          <span class="sys-label">AERIX ENGINE INITIALIZATION</span>
+          <p id="loading-text" class="sys-status">LOADING HAND LANDMARK MODEL...</p>
+          <div class="progress-track"><div id="loading-bar" class="progress-fill"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       2. MAIN SPATIAL WORKSPACE
+       ═══════════════════════════════════════════════════════════════════ -->
+  <div id="app-workspace" class="app-workspace">
+
+    <!-- ── TOP BAR (Spatial Navigation & System Telemetry) ───────────── -->
+    <header class="top-nav-bar glass-surface">
+      <!-- Left Brand Group -->
+      <div class="nav-left">
+        <div class="aerix-logo-mark">
+          <span class="logo-symbol">▲</span>
+          <div class="logo-text-group">
+            <span class="brand-name">AERIX</span>
+            <span class="brand-context">AI CREATIVE SPACE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Telemetry HUD -->
+      <div class="nav-center">
+        <div class="telemetry-pill">
+          <span class="status-dot active"></span>
+          <span class="hud-item" id="hud-vision-status">VISION ACTIVE</span>
+          <span class="hud-sep">&bull;</span>
+          <span class="hud-item" id="hud-tracking-status">HAND TRACKING</span>
+          <span class="hud-sep">&bull;</span>
+          <span class="hud-item hud-fps" id="hud-fps-readout">60 FPS</span>
+          <span class="hud-sep">&bull;</span>
+          <span class="hud-item hud-conf" id="hud-confidence">98% CONF</span>
+        </div>
+      </div>
+
+      <!-- Right Action & Presence Group -->
+      <div class="nav-right">
+        <!-- Live Space Button -->
+        <button id="live-space-btn" class="nav-action-pill live-pill" title="Multiplayer Live Space">
+          <span class="live-dot"></span>
+          <span class="live-label">LIVE SPACE</span>
+          <span class="user-count-badge" id="live-user-count">1</span>
+        </button>
+
+        <!-- Help Guide Trigger -->
+        <button id="guide-btn" class="nav-icon-btn" title="Gesture Cheatsheet">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+
+        <!-- Control Hub (Settings) Trigger -->
+        <button id="settings-btn" class="nav-icon-btn" title="Control Hub Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── LEFT TOOL RAIL (Spatial Floating Dock) ────────────────────── -->
+    <aside class="tool-rail glass-surface">
+      <div class="rail-items">
+        <button class="rail-btn active" data-tool="create" title="Create / Paint Stroke (☝️)">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+            <path d="M2 2l7.586 7.586"></path>
+          </svg>
+          <span class="tool-label">CREATE</span>
+        </button>
+
+        <button class="rail-btn" data-tool="shapesense" title="ShapeSense AI Recognition">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9"></circle>
+            <polygon points="12 4 19.5 17 4.5 17"></polygon>
+          </svg>
+          <span class="tool-label">SHAPES</span>
+        </button>
+
+        <button class="rail-btn" data-tool="inkai" title="Ink AI — Air Handwriting Mode">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+            <line x1="9" y1="20" x2="15" y2="20"></line>
+            <line x1="12" y1="4" x2="12" y2="20"></line>
+          </svg>
+          <span class="tool-label">INK AI</span>
+        </button>
+
+        <button class="rail-btn" data-tool="spectrum" title="Spectrum Color Matrix">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10"></path>
+            <circle cx="12" cy="8" r="2"></circle>
+            <circle cx="8" cy="14" r="2"></circle>
+            <circle cx="16" cy="14" r="2"></circle>
+          </svg>
+          <span class="tool-label">SPECTRUM</span>
+        </button>
+
+        <button class="rail-btn" data-tool="brush" title="Brush & Glow Engine">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18.375 2.625a3.875 3.875 0 0 0-5.48 0L3.5 12v6.5H10l9.395-9.395a3.875 3.875 0 0 0 0-5.48z"></path>
+            <line x1="13.5" y1="6.5" x2="17.5" y2="10.5"></line>
+          </svg>
+          <span class="tool-label">BRUSH</span>
+        </button>
+
+        <button class="rail-btn" data-tool="aistudio" title="AERIX AI Studio & Assist">
+          <div class="btn-indicator"></div>
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+          </svg>
+          <span class="tool-label">AI STUDIO</span>
+        </button>
+      </div>
+
+      <div class="rail-footer">
+        <button class="rail-btn" data-action="radial-menu" id="radial-trigger-btn" title="Open Radial Command Matrix">
+          <svg class="tool-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <circle cx="12" cy="12" r="8" stroke-dasharray="4 4"></circle>
+          </svg>
+          <span class="tool-label">RADIAL</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── HERO SPATIAL CANVAS AREA ─────────────────────────────────── -->
+    <main class="spatial-canvas-viewport">
+      <!-- Hidden Video Element for MediaPipe HandLandmarker -->
+      <video id="webcam" class="webcam-feed-hidden" autoplay playsinline muted></video>
+
+      <!-- Primary Output Compositing Canvas (Hardware Accelerated) -->
+      <canvas id="output_canvas" class="spatial-canvas"></canvas>
+
+      <!-- Floating Spatial Gestura HUD (Minimal) -->
+      <div id="gesture-hud" class="gesture-hud glass-surface">
+        <div class="hud-header">
+          <span class="hud-title">GESTURA HUD</span>
+          <span id="hand-indicator-pill" class="hand-indicator-pill">TRACKING</span>
+        </div>
+        <div class="hud-body">
+          <div class="hud-stat-col">
+            <span class="hud-small-label">CURRENT GESTURE</span>
+            <div class="gesture-badge-container">
+              <span id="gesture-label" class="gesture-badge idle">IDLE 🤚</span>
+            </div>
+          </div>
+          <div class="hud-stat-col">
+            <span class="hud-small-label">ACTIVE TOOL</span>
+            <span id="hud-active-tool" class="hud-metric-val">PEN GLOW</span>
+          </div>
+        </div>
+        <div id="countdown-badge" class="countdown-badge"></div>
+      </div>
+
+      <!-- Quick Action Floating Dock (Bottom Right) -->
+      <div class="quick-action-dock glass-surface">
+        <button id="undo-btn" class="dock-btn" title="Undo Stroke (Ctrl+Z)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7v6h6"></path>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+          </svg>
+          <span>UNDO</span>
+        </button>
+
+        <button id="clear-btn" class="dock-btn danger" title="Dissolve All (Hold Palm 5s)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>DISSOLVE</span>
+        </button>
+
+        <button id="download-btn" class="dock-btn primary" title="Capture / Export PNG">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>CAPTURE</span>
+        </button>
+      </div>
+
+      <!-- ── RADIAL COMMAND MATRIX (Futuristic Circular HUD) ────────── -->
+      <div id="radial-menu" class="radial-menu">
+        <div class="radial-backdrop"></div>
+        <div class="radial-center-core">
+          <span class="core-logo">▲</span>
+          <span class="core-text">AERIX</span>
+        </div>
+        <div class="radial-slices-container">
+          <button class="radial-slice" data-action="draw" style="--slice-idx: 0">
+            <span class="slice-icon">✏️</span>
+            <span class="slice-text">CREATE</span>
+          </button>
+          <button class="radial-slice" data-action="erase" style="--slice-idx: 1">
+            <span class="slice-icon">🧽</span>
+            <span class="slice-text">ERASE</span>
+          </button>
+          <button class="radial-slice" data-action="spectrum" style="--slice-idx: 2">
+            <span class="slice-icon">🎨</span>
+            <span class="slice-text">SPECTRUM</span>
+          </button>
+          <button class="radial-slice" data-action="shapesense" style="--slice-idx: 3">
+            <span class="slice-icon">📐</span>
+            <span class="slice-text">SHAPES</span>
+          </button>
+          <button class="radial-slice" data-action="inkai" style="--slice-idx: 4">
+            <span class="slice-icon">✍️</span>
+            <span class="slice-text">INK AI</span>
+          </button>
+          <button class="radial-slice" data-action="aistudio" style="--slice-idx: 5">
+            <span class="slice-icon">⚡</span>
+            <span class="slice-text">AI STUDIO</span>
+          </button>
+          <button class="radial-slice" data-action="download" style="--slice-idx: 6">
+            <span class="slice-icon">💾</span>
+            <span class="slice-text">SAVE</span>
+          </button>
+          <button class="radial-slice" data-action="clear" style="--slice-idx: 7">
+            <span class="slice-icon">🗑️</span>
+            <span class="slice-text">CLEAR</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── SHAPESENSE PROMPT TOAST (AI Shape Recognition HUD) ─────── -->
+      <div id="shapesense-hud" class="shapesense-hud glass-surface">
+        <div class="shapesense-header">
+          <span class="ai-sparkle">✨</span>
+          <span class="ai-title">SHAPESENSE AI</span>
+        </div>
+        <div class="shapesense-body">
+          <p class="shapesense-detected">DETECTED: <strong id="shapesense-shape-name">CIRCLE</strong></p>
+          <div class="shapesense-actions">
+            <button id="shapesense-perfect-btn" class="shapesense-btn primary">PERFECT</button>
+            <button id="shapesense-keep-btn" class="shapesense-btn secondary">KEEP ORIGINAL</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ── SLIDABLE SIDE PANELS (Glassmorphic Drawers) ──────────────── -->
+
+    <!-- Panel 1: SPECTRUM MATRIX -->
+    <div id="panel-spectrum" class="slide-panel glass-surface">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <h3>SPECTRUM</h3>
+          <span class="panel-subtitle">CURATED PHOTONIC PALETTES</span>
+        </div>
+        <button class="panel-close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="spectrum-grid">
+          <button class="spectrum-swatch active" data-color="#00FFAA" data-name="NEON EMERALD" style="--swatch-color: #00FFAA">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">NEON</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#38BDF8" data-name="ICE CYAN" style="--swatch-color: #38BDF8">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">ICE</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#8B5CF6" data-name="ELECTRIC VIOLET" style="--swatch-color: #8B5CF6">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">VIOLET</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#06B6D4" data-name="SOFT CYAN" style="--swatch-color: #06B6D4">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">CYAN</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#FF3366" data-name="SUNSET ROSE" style="--swatch-color: #FF3366">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">SUNSET</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#FFCC00" data-name="SOLAR AMBER" style="--swatch-color: #FFCC00">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">SOLAR</span>
+          </button>
+          <button class="spectrum-swatch" data-color="#FFFFFF" data-name="PURE MONO" style="--swatch-color: #FFFFFF">
+            <div class="swatch-glow"></div>
+            <span class="swatch-label">MONO</span>
+          </button>
+          <div class="custom-color-wrapper">
+            <input type="color" id="custom-color-picker" value="#A855F7" />
+            <label for="custom-color-picker" class="custom-color-btn" title="Custom Spectrum Hue">
+              <span>+</span>
+              <span class="swatch-label">CUSTOM</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="spectrum-info-card">
+          <span class="info-tag">GESTURE SHORTCUT</span>
+          <p>Flash a ✌️ Peace Sign to cycle to the next color instantly.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: BRUSH & GLOW ENGINE -->
+    <div id="panel-brush" class="slide-panel glass-surface">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <h3>BRUSH ENGINE</h3>
+          <span class="panel-subtitle">STROKE DYNAMICS & GLOW</span>
+        </div>
+        <button class="panel-close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <!-- Live Preview Orb -->
+        <div class="brush-preview-box">
+          <div id="brush-preview-dot" class="brush-preview-dot"></div>
+        </div>
+
+        <!-- Stroke Width -->
+        <div class="control-row">
+          <div class="control-label-group">
+            <label>STROKE SIZE</label>
+            <span class="val-badge" id="size-val">08 px</span>
+          </div>
+          <input type="range" id="brush-size" min="2" max="40" value="8" class="aerix-slider" />
+        </div>
+
+        <!-- Glow Intensity -->
+        <div class="control-row">
+          <div class="control-label-group">
+            <label>PHOTON GLOW</label>
+            <span class="val-badge" id="glow-val">72%</span>
+          </div>
+          <input type="range" id="glow-intensity" min="0" max="60" value="22" class="aerix-slider" />
+        </div>
+
+        <!-- Eraser Radius -->
+        <div class="control-row">
+          <div class="control-label-group">
+            <label>DISSOLVE BRUSH RADIUS</label>
+            <span class="val-badge" id="eraser-val">40 px</span>
+          </div>
+          <input type="range" id="eraser-size" min="10" max="120" value="40" class="aerix-slider" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: INK AI AIR HANDWRITING -->
+    <div id="panel-inkai" class="slide-panel glass-surface">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <h3>INK AI</h3>
+          <span class="panel-subtitle">AIR HANDWRITING &bull; OCR OCR RECOGNITION</span>
+        </div>
+        <button class="panel-close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="ink-ai-status-card">
+          <span class="pulse-beacon"></span>
+          <span class="ink-status-text">WRITE IN AIR WITH INDEX FINGER</span>
+        </div>
+
+        <div class="ink-transcription-box">
+          <label>RECOGNIZED SPATIAL TEXT</label>
+          <div id="ink-transcribed-text" class="transcribed-text-display">
+            AERIX SPATIAL OS
+          </div>
+        </div>
+
+        <div class="ink-actions-grid">
+          <button id="ink-copy-btn" class="ink-action-btn">
+            <span>📋</span> COPY
+          </button>
+          <button id="ink-clear-btn" class="ink-action-btn">
+            <span>🔄</span> CLEAR
+          </button>
+          <button id="ink-translate-btn" class="ink-action-btn">
+            <span>🌐</span> TRANSLATE
+          </button>
+          <button id="ink-save-btn" class="ink-action-btn primary">
+            <span>💾</span> INSERT
+          </button>
+        </div>
+
+        <div class="ink-ai-hint">
+          <span class="badge-prototype">AI PROTOTYPE</span>
+          <p>Ink AI samples stroke trajectory vectors to transcribe air calligraphy into editable digital typography.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 4: AERIX AI STUDIO -->
+    <div id="panel-aistudio" class="slide-panel glass-surface">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <h3>AERIX AI STUDIO</h3>
+          <span class="panel-subtitle">NEURAL SPATIAL ASSISTANT</span>
+        </div>
+        <button class="panel-close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="ai-feature-card" id="ai-smart-smooth">
+          <div class="ai-feat-icon">✨</div>
+          <div class="ai-feat-info">
+            <h4>AI Curve Smoothing</h4>
+            <p>Applies neural curve fitting to transform jittery strokes into master calligraphic lines.</p>
+          </div>
+          <button class="ai-apply-btn" id="btn-ai-smooth">SMOOTH</button>
+        </div>
+
+        <div class="ai-feature-card" id="ai-smart-cleanup">
+          <div class="ai-feat-icon">🧹</div>
+          <div class="ai-feat-info">
+            <h4>Smart Cleanup</h4>
+            <p>Detects and eliminates micro-dots, stray artifacts, and accidental touch marks.</p>
+          </div>
+          <button class="ai-apply-btn" id="btn-ai-cleanup">CLEANUP</button>
+        </div>
+
+        <div class="ai-feature-card" id="ai-color-harmonize">
+          <div class="ai-feat-icon">🌈</div>
+          <div class="ai-feat-info">
+            <h4>Neon Harmonizer</h4>
+            <p>Harmonizes canvas tones into a high-contrast cinematic color palette.</p>
+          </div>
+          <button class="ai-apply-btn" id="btn-ai-harmonize">HARMONIZE</button>
+        </div>
+
+        <div class="ai-feature-card disabled">
+          <div class="ai-feat-icon">🎨</div>
+          <div class="ai-feat-info">
+            <h4>Generative Vector Infill</h4>
+            <p>Synthesizes continuous backgrounds from your drawn contour boundaries.</p>
+          </div>
+          <span class="badge-coming-soon">COMING SOON</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONTROL HUB MODAL (Settings) ─────────────────────────────── -->
+    <div id="control-hub-modal" class="modal-dialog-backdrop">
+      <div class="modal-dialog-panel glass-surface">
+        <div class="dialog-header">
+          <div class="dialog-title-group">
+            <h2>CONTROL HUB</h2>
+            <span class="dialog-subtitle">SYSTEM CALIBRATION & PREFERENCES</span>
+          </div>
+          <button id="close-control-hub" class="panel-close-btn">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="settings-section">
+            <h4 class="section-title">VISION & TRACKING</h4>
+            <div class="setting-row">
+              <label>Mirror Video & Coordinates</label>
+              <input type="checkbox" id="setting-mirror" checked class="aerix-toggle" />
+            </div>
+            <div class="setting-row">
+              <label>Draw Skeleton Overlay</label>
+              <input type="checkbox" id="setting-skeleton" checked class="aerix-toggle" />
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h4 class="section-title">PERFORMANCE & PARTICLES</h4>
+            <div class="setting-row">
+              <label>Particle Intensity</label>
+              <select id="setting-particles" class="aerix-select">
+                <option value="high">Cinematic (High)</option>
+                <option value="medium" selected>Balanced (Standard)</option>
+                <option value="low">Minimal (Performance)</option>
+                <option value="off">Off (Zero Lag)</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <label>Smoothing Filter (EMA)</label>
+              <select id="setting-smooth" class="aerix-select">
+                <option value="0.5">Ultra Responsive (Light)</option>
+                <option value="0.7" selected>Standard Balanced (0.7)</option>
+                <option value="0.85">High Smooth (Cinema)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h4 class="section-title">LIVE SPACE MULTIPLAYER</h4>
+            <div class="setting-row">
+              <label>Broadcast Cursor Telemetry</label>
+              <input type="checkbox" id="setting-multiplayer-cursor" checked class="aerix-toggle" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LIVE SPACE MODAL (Multiplayer Room Hub) ──────────────────── -->
+    <div id="live-space-modal" class="modal-dialog-backdrop">
+      <div class="modal-dialog-panel glass-surface">
+        <div class="dialog-header">
+          <div class="dialog-title-group">
+            <h2>LIVE SPACE</h2>
+            <span class="dialog-subtitle">REALTIME COLLABORATIVE CANVASES</span>
+          </div>
+          <button id="close-live-space" class="panel-close-btn">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="live-room-card">
+            <div class="room-status-badge">
+              <span class="live-beacon"></span>
+              <span>LIVE CONNECTED</span>
+            </div>
+            <div class="room-field">
+              <label>CURRENT ROOM CODE</label>
+              <div class="code-copy-row">
+                <input type="text" id="live-room-input" value="default" class="aerix-input" />
+                <button id="btn-switch-room" class="aerix-btn-secondary">SWITCH</button>
+              </div>
+            </div>
+            <div class="room-field">
+              <label>INVITE COLLABORATORS</label>
+              <button id="btn-copy-invite" class="aerix-btn-primary full-width">
+                <span>🔗</span> COPY INVITE LINK
+              </button>
+            </div>
+          </div>
+
+          <div class="active-creators-card">
+            <label>SPATIAL CREATORS PRESENT (<span id="modal-user-count">1</span>)</label>
+            <div id="creators-list" class="creators-list">
+              <div class="creator-pill you">
+                <span class="avatar-orb">👤</span>
+                <span class="creator-name">YOU (Host)</span>
+                <span class="creator-tag">ONLINE</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GESTURE GUIDE MODAL (Interactive Help) ───────────────────── -->
+    <div id="gesture-guide-modal" class="modal-dialog-backdrop">
+      <div class="modal-dialog-panel glass-surface">
+        <div class="dialog-header">
+          <div class="dialog-title-group">
+            <h2>GESTURA DIRECTORY</h2>
+            <span class="dialog-subtitle">TOUCHLESS INTERACTION GUIDE</span>
+          </div>
+          <button id="close-gesture-guide" class="panel-close-btn">&times;</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="portal-gestures-grid">
+            <div class="gesture-card">
+              <div class="gesture-icon-orb">☝️</div>
+              <div class="gesture-info">
+                <span class="gesture-badge">PEN MODE</span>
+                <h4>Draw</h4>
+                <p>Extend index finger only to paint glowing spatial strokes.</p>
+              </div>
+            </div>
+            <div class="gesture-card">
+              <div class="gesture-icon-orb">✌️</div>
+              <div class="gesture-info">
+                <span class="gesture-badge">SPECTRUM</span>
+                <h4>Cycle Color</h4>
+                <p>Two fingers (index + middle) cycles through the photonic color palette.</p>
+              </div>
+            </div>
+            <div class="gesture-card">
+              <div class="gesture-icon-orb">🖐️</div>
+              <div class="gesture-info">
+                <span class="gesture-badge">DISSOLVE</span>
+                <h4>Erase & Clear</h4>
+                <p>Move open palm to erase localized areas; keep still for 5s to dissolve the entire canvas.</p>
+              </div>
+            </div>
+            <div class="gesture-card">
+              <div class="gesture-icon-orb">✊</div>
+              <div class="gesture-info">
+                <span class="gesture-badge">STANDBY</span>
+                <h4>Pause</h4>
+                <p>Close fingers into a fist to reposition your hand without painting.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
