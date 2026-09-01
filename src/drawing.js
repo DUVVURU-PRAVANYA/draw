@@ -1,16 +1,16 @@
-// ── AERIX SPATIAL DRAWING ENGINE ──────────────────────────────────────────
+// ── DrawingEngine ─────────────────────────────────────────────────────────
 //
 // Architecture:
 //   bufferCanvas  – all committed strokes (persistent)
-//   overlayCanvas – active in-progress stroke (cleared & incrementally drawn per frame)
-//   main canvas   – composite of buffer + overlay + particles + remote cursors + UI HUD
+//   overlayCanvas – current in-progress stroke (cleared each frame)
+//   main canvas   – composite of buffer + overlay + particles + UI chrome
 //
-// Enhanced Capabilities:
-//   • Speed-responsive particle emitter
-//   • Dual-pass Bézier curve interpolation
-//   • Capsule-fill destination-out eraser
-//   • ShapeSense geometric detection & replacement
-//   • Neural canvas enhancement suite (AI Smooth, Smart Cleanup, Neon Harmonizer)
+// Key improvements:
+//   • Point-buffer smoothing with configurable window size
+//   • Incremental overlay rendering — no full redraws per frame
+//   • Smart eraser with line-fill capsules to prevent gaps on fast movement
+//   • Remote cursor labels for multiplayer
+//   • Particle system only spawns every N points (perf)
 
 export class DrawingEngine {
   constructor(canvasElement, width, height) {
@@ -25,10 +25,10 @@ export class DrawingEngine {
     this.overlayCanvas = document.createElement('canvas');
     this.overlayCtx    = this.overlayCanvas.getContext('2d', { alpha: true });
 
-    // ── Engine State ─────────────────────────────────────────────────────
+    // ── State ────────────────────────────────────────────────────────────
     this.currentColor      = '#00FFAA';
     this.currentSize       = 8;
-    this.currentGlow       = 22;
+    this.currentGlow       = 18;
     this.currentEraserSize = 40;
 
     this.lines        = [];       // all committed line descriptors
@@ -36,42 +36,33 @@ export class DrawingEngine {
     this.historyStack = [];       // for undo
 
     // ── Point smoothing buffer ────────────────────────────────────────────
+    // Keeps last N raw positions; outputs rolling average
     this._smoothBuf    = [];
-    this._smoothWindow = 4;
-
-    // ── Velocity tracking for dynamic particles ──────────────────────────
-    this._lastPointTime = 0;
-    this._lastRawX      = null;
-    this._lastRawY      = null;
-    this._currentSpeed  = 0;
+    this._smoothWindow = 4;       // low = responsive, high = smoother
 
     // ── Trail effect ─────────────────────────────────────────────────────
     this.trailPoints = [];
-    this.trailMaxAge = 350;       // ms
+    this.trailMaxAge = 300;       // ms
 
     // ── Particles ────────────────────────────────────────────────────────
-    this.particles          = [];
-    this._particleTick      = 0;
-    this.particleIntensity  = 'medium'; // high, medium, low, off
+    this.particles       = [];
+    this._particleTick   = 0;     // only spawn every N draw calls
 
     // ── Erase state ──────────────────────────────────────────────────────
     this._lastEraseX = null;
     this._lastEraseY = null;
 
     // ── Multiplayer: remote cursors ───────────────────────────────────────
-    this._remoteCursors = {};     // id → {x, y, color, label, drawing}
-
-    // ── ShapeSense callback ───────────────────────────────────────────────
-    this.onShapeDetected = null;
+    this._remoteCursors = {};     // id → {x, y, color, label}
 
     this.resize(width, height);
   }
 
-  // ── Canvas Sizing ────────────────────────────────────────────────────────
+  // ── Resize ───────────────────────────────────────────────────────────────
   resize(w, h) {
-    const tmp = document.createElement('canvas');
-    tmp.width  = this.bufferCanvas.width  || w;
-    tmp.height = this.bufferCanvas.height || h;
+    const tmp       = document.createElement('canvas');
+    tmp.width        = this.bufferCanvas.width  || w;
+    tmp.height       = this.bufferCanvas.height || h;
     tmp.getContext('2d').drawImage(this.bufferCanvas, 0, 0);
 
     this.canvas.width         = w;
@@ -85,13 +76,17 @@ export class DrawingEngine {
   }
 
   // ── Setters ───────────────────────────────────────────────────────────────
-  setColor(c)               { this.currentColor      = c; }
-  setSize(s)                { this.currentSize       = s; }
-  setGlow(g)                { this.currentGlow       = g; }
-  setEraserSize(r)          { this.currentEraserSize = r; }
-  setParticleIntensity(lvl) { this.particleIntensity = lvl; }
+  setColor(c)       { this.currentColor      = c; }
+  setSize(s)        { this.currentSize       = s; }
+  setGlow(g)        { this.currentGlow       = g; }
+  setEraserSize(r)  { this.currentEraserSize = r; }
 
   // ── Point smoothing ───────────────────────────────────────────────────────
+  /**
+   * Push raw position into smooth buffer and return moving-average position.
+   * This is separate from the SMOOTH factor in main.js — provides additional
+   * micro-jitter removal.
+   */
   smooth(rawX, rawY) {
     this._smoothBuf.push({ x: rawX, y: rawY });
     if (this._smoothBuf.length > this._smoothWindow) {
@@ -122,14 +117,7 @@ export class DrawingEngine {
       points: [{ x, y }]
     };
     this.lines.push(this.currentLine);
-
-    this._lastRawX = x;
-    this._lastRawY = y;
-    this._lastPointTime = performance.now();
-
-    if (this.particleIntensity !== 'off') {
-      this._spawnParticles(x, y, this.currentColor, 8);
-    }
+    this._spawnParticles(x, y, this.currentColor, 8);
   }
 
   addPoint(x, y) {
@@ -137,56 +125,36 @@ export class DrawingEngine {
     const pts  = this.currentLine.points;
     const last = pts[pts.length - 1];
 
-    const dist = Math.hypot(x - last.x, y - last.y);
-    if (dist < 1.5) return;
-
-    // Calculate instantaneous drawing velocity
-    const now = performance.now();
-    const dt  = Math.max(1, now - this._lastPointTime);
-    this._currentSpeed = dist / dt; // px per ms
-    this._lastPointTime = now;
-    this._lastRawX = x;
-    this._lastRawY = y;
+    // Minimum distance threshold — avoids duplicate points stacking
+    if (Math.hypot(x - last.x, y - last.y) < 1.5) return;
 
     pts.push({ x, y });
 
-    // Incrementally draw latest segment
+    // Incrementally draw segments onto overlay — avoids O(n) full redraws
     this._drawLastSegment(this.overlayCtx, this.currentLine);
 
-    // Speed-responsive particles
-    if (this.particleIntensity !== 'off') {
-      this._particleTick++;
-      const interval = (this.particleIntensity === 'high') ? 4 : (this.particleIntensity === 'low') ? 12 : 7;
-      if (this._particleTick % interval === 0) {
-        const particleCount = Math.min(8, Math.max(2, Math.round(this._currentSpeed * 3)));
-        this._spawnParticles(x, y, this.currentColor, particleCount);
-      }
+    // Spawn particles periodically while drawing (not every point)
+    this._particleTick++;
+    if (this._particleTick % 8 === 0) {
+      this._spawnParticles(x, y, this.currentColor, 3);
     }
   }
 
   endLine() {
     if (!this.currentLine) return;
-    const line = this.currentLine;
-    
-    // Commit stroke to persistent buffer
-    this._drawStroke(this.bufferCtx, line);
+    // Commit the completed stroke to the persistent buffer
+    this._drawStroke(this.bufferCtx, this.currentLine);
+    // Clear overlay — buffer now owns this stroke
     this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
     this.currentLine = null;
     this.clearSmoothBuffer();
-
-    // ShapeSense Recognition Analysis
-    if (line.points.length >= 8 && this.onShapeDetected) {
-      const detectedShape = this._analyzeShape(line.points);
-      if (detectedShape) {
-        this.onShapeDetected(detectedShape, line);
-      }
-    }
   }
 
-  // ── Smart Eraser (Capsule Fill) ───────────────────────────────────────────
+  // ── Eraser (brush, NOT full clear) ───────────────────────────────────────
   eraseAt(x, y, radius) {
     radius = radius ?? this.currentEraserSize;
 
+    // Commit any active stroke before erasing
     if (this.currentLine) {
       this._drawStroke(this.bufferCtx, this.currentLine);
       this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
@@ -196,6 +164,8 @@ export class DrawingEngine {
     this.bufferCtx.save();
     this.bufferCtx.globalCompositeOperation = 'destination-out';
 
+    // Fill a capsule between last and current erase position
+    // to prevent gaps when the hand moves quickly
     if (this._lastEraseX !== null) {
       const dx   = x - this._lastEraseX;
       const dy   = y - this._lastEraseY;
@@ -211,6 +181,7 @@ export class DrawingEngine {
       }
     }
 
+    // Always punch a circle at current position
     this.bufferCtx.beginPath();
     this.bufferCtx.arc(x, y, radius, 0, Math.PI * 2);
     this.bufferCtx.fillStyle = 'rgba(0,0,0,1)';
@@ -222,12 +193,13 @@ export class DrawingEngine {
     this._lastEraseY = y;
   }
 
+  /** Reset eraser continuity — call when ERASE gesture ends */
   endErase() {
     this._lastEraseX = null;
     this._lastEraseY = null;
   }
 
-  // ── Clear / Dissolve ──────────────────────────────────────────────────────
+  // ── Clear ─────────────────────────────────────────────────────────────────
   clear(animate = false) {
     this._saveSnapshot();
     this.lines       = [];
@@ -250,183 +222,22 @@ export class DrawingEngine {
     this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
   }
 
-  // ── Export / Capture PNG ─────────────────────────────────────────────────
+  // ── Download ─────────────────────────────────────────────────────────────
   download() {
     const exp   = document.createElement('canvas');
     exp.width   = this.canvas.width;
     exp.height  = this.canvas.height;
     const c     = exp.getContext('2d');
-    
-    // Premium obsidian space background with subtle gradient
-    const grad = c.createRadialGradient(exp.width/2, exp.height/2, 50, exp.width/2, exp.height/2, exp.width);
-    grad.addColorStop(0, '#0E111C');
-    grad.addColorStop(1, '#07080B');
-    c.fillStyle = grad;
+    c.fillStyle = '#0d0d1a';
     c.fillRect(0, 0, exp.width, exp.height);
-
     c.drawImage(this.bufferCanvas, 0, 0);
-
-    // Watermark
-    c.save();
-    c.font = 'bold 12px Space Grotesk, sans-serif';
-    c.fillStyle = 'rgba(255, 255, 255, 0.35)';
-    c.fillText('AERIX  •  CREATE BEYOND TOUCH', 24, exp.height - 24);
-    c.restore();
-
     const a    = document.createElement('a');
-    a.download = `AERIX-${Date.now()}.png`;
+    a.download = 'aerix.png';
     a.href     = exp.toDataURL('image/png');
     a.click();
   }
 
-  // ── ShapeSense Geometric Detection ────────────────────────────────────────
-  _analyzeShape(pts) {
-    if (pts.length < 8) return null;
-    const n = pts.length;
-    const start = pts[0];
-    const end = pts[n - 1];
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    let totalLength = 0;
-    for (let i = 0; i < n; i++) {
-      minX = Math.min(minX, pts[i].x);
-      maxX = Math.max(maxX, pts[i].x);
-      minY = Math.min(minY, pts[i].y);
-      maxY = Math.max(maxY, pts[i].y);
-      if (i > 0) {
-        totalLength += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-      }
-    }
-
-    const bboxW = Math.max(1, maxX - minX);
-    const bboxH = Math.max(1, maxY - minY);
-    const center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-    const radius = (bboxW + bboxH) / 4;
-    const endpointDist = Math.hypot(start.x - end.x, start.y - end.y);
-    const isClosed = endpointDist < (radius * 0.7);
-
-    // 1. Line Check: direct start-to-end vs total length
-    const directDist = Math.hypot(start.x - end.x, start.y - end.y);
-    if (!isClosed && directDist > 40 && (directDist / totalLength) > 0.88) {
-      return {
-        type: 'LINE',
-        name: 'LINE',
-        params: { start, end }
-      };
-    }
-
-    // 2. Circle Check: variance of distance from center
-    if (isClosed && bboxW > 30 && bboxH > 30) {
-      const aspectRatio = bboxW / bboxH;
-      if (aspectRatio > 0.75 && aspectRatio < 1.35) {
-        let radialVariance = 0;
-        for (const p of pts) {
-          const d = Math.hypot(p.x - center.x, p.y - center.y);
-          radialVariance += Math.abs(d - radius);
-        }
-        const avgRadialError = radialVariance / n;
-        if (avgRadialError < radius * 0.28) {
-          return {
-            type: 'CIRCLE',
-            name: 'CIRCLE',
-            params: { center, radius }
-          };
-        }
-      }
-
-      // 3. Rectangle / Square Check
-      return {
-        type: 'RECTANGLE',
-        name: (Math.abs(bboxW - bboxH) < 25) ? 'SQUARE' : 'RECTANGLE',
-        params: { x: minX, y: minY, w: bboxW, h: bboxH }
-      };
-    }
-
-    return null;
-  }
-
-  perfectLastShape(shapeObj, originalLine) {
-    if (!shapeObj || !originalLine) return;
-    this._saveSnapshot();
-
-    // Replace original line points with parameterized perfect geometry
-    const pts = [];
-    const color = originalLine.color;
-    const size = originalLine.size;
-    const glow = originalLine.glow;
-
-    if (shapeObj.type === 'CIRCLE') {
-      const { center, radius } = shapeObj.params;
-      const steps = 60;
-      for (let i = 0; i <= steps; i++) {
-        const theta = (i / steps) * Math.PI * 2;
-        pts.push({
-          x: center.x + Math.cos(theta) * radius,
-          y: center.y + Math.sin(theta) * radius
-        });
-      }
-    } else if (shapeObj.type === 'RECTANGLE') {
-      const { x, y, w, h } = shapeObj.params;
-      pts.push({ x, y });
-      pts.push({ x: x + w, y });
-      pts.push({ x: x + w, y: y + h });
-      pts.push({ x, y: y + h });
-      pts.push({ x, y });
-    } else if (shapeObj.type === 'LINE') {
-      pts.push(shapeObj.params.start);
-      pts.push(shapeObj.params.end);
-    }
-
-    // Redraw buffer with new line
-    const idx = this.lines.indexOf(originalLine);
-    if (idx !== -1) {
-      this.lines[idx] = { color, size, glow, points: pts };
-    }
-    this._redrawAllCommitted();
-  }
-
-  // ── AERIX AI Studio Enhancements ──────────────────────────────────────────
-  aiSmoothAll() {
-    this._saveSnapshot();
-    for (const line of this.lines) {
-      if (line.points.length > 3) {
-        const smoothed = [line.points[0]];
-        for (let i = 1; i < line.points.length - 1; i++) {
-          smoothed.push({
-            x: (line.points[i - 1].x + line.points[i].x * 2 + line.points[i + 1].x) / 4,
-            y: (line.points[i - 1].y + line.points[i].y * 2 + line.points[i + 1].y) / 4
-          });
-        }
-        smoothed.push(line.points[line.points.length - 1]);
-        line.points = smoothed;
-      }
-    }
-    this._redrawAllCommitted();
-  }
-
-  aiCleanup() {
-    this._saveSnapshot();
-    this.lines = this.lines.filter(l => l.points.length > 2);
-    this._redrawAllCommitted();
-  }
-
-  aiHarmonizePalette() {
-    this._saveSnapshot();
-    const neonPalette = ['#00FFAA', '#38BDF8', '#8B5CF6', '#06B6D4', '#FF3366', '#FFCC00'];
-    this.lines.forEach((l, idx) => {
-      l.color = neonPalette[idx % neonPalette.length];
-    });
-    this._redrawAllCommitted();
-  }
-
-  _redrawAllCommitted() {
-    this.bufferCtx.clearRect(0, 0, this.bufferCanvas.width, this.bufferCanvas.height);
-    for (const line of this.lines) {
-      this._drawStroke(this.bufferCtx, line);
-    }
-  }
-
-  // ── Multiplayer Synchronization ──────────────────────────────────────────
+  // ── Multiplayer ───────────────────────────────────────────────────────────
   receiveRemoteStroke({ points, color, size, glow }) {
     if (!points || points.length < 2) return;
     this._drawStroke(this.bufferCtx, { points, color, size, glow });
@@ -434,6 +245,7 @@ export class DrawingEngine {
 
   receiveRemoteDraw({ id, x, y, isDrawing, color, size = 6, glow = 14 }) {
     const cursor = this._remoteCursors[id];
+
     if (isDrawing && cursor?.drawing) {
       this._drawStroke(this.bufferCtx, {
         points: [cursor.drawing, { x, y }],
@@ -462,7 +274,7 @@ export class DrawingEngine {
     }
   }
 
-  // ── Main Composite Render Loop ────────────────────────────────────────────
+  // ── Main render (every rAF frame) ─────────────────────────────────────────
   render(cursorX, cursorY, gesture, hasHand, palmHoldProgress = 0) {
     const ctx = this.ctx;
     const w   = this.canvas.width;
@@ -471,7 +283,7 @@ export class DrawingEngine {
     // 1. Clear display canvas
     ctx.clearRect(0, 0, w, h);
 
-    // 2. Committed strokes (buffer)
+    // 2. Committed strokes (stable buffer)
     ctx.drawImage(this.bufferCanvas, 0, 0);
 
     // 3. Active in-progress stroke from overlay
@@ -479,39 +291,42 @@ export class DrawingEngine {
       ctx.drawImage(this.overlayCanvas, 0, 0);
     }
 
-    // 4. Remote multiplayer cursors
+    // 4. Remote cursors
     this._renderRemoteCursors(ctx);
 
-    // 5. Light trails
+    // 5. Trail effect
     this._renderTrail(ctx);
 
     // 6. Particles
     this._updateParticles();
     this._renderParticles(ctx);
 
-    // 7. Dissolve / Clear flash
+    // 7. Clear flash
     if (this._clearFlash) {
       ctx.save();
       ctx.globalAlpha = this._clearFlash.alpha;
       ctx.fillStyle   = '#ffffff';
       ctx.fillRect(0, 0, w, h);
       ctx.restore();
-      this._clearFlash.alpha -= 0.05;
+      this._clearFlash.alpha -= 0.06;
       if (this._clearFlash.alpha <= 0) this._clearFlash = null;
     }
 
-    // 8. Palm-hold progress ring
+    // 8. Palm-hold ring (progressive arc)
     if (palmHoldProgress > 0 && cursorX !== null) {
       this._renderHoldRing(ctx, cursorX, cursorY, palmHoldProgress);
     }
 
-    // 9. Spatial Cursor
+    // 9. Cursor dot
     if (cursorX !== null && cursorY !== null) {
       this._renderCursor(ctx, cursorX, cursorY, gesture, hasHand);
     }
   }
 
-  // ── Private Render Subroutines ───────────────────────────────────────────
+  // noop – backward compat
+  clearOverlay() {}
+
+  // ── Private: stroke rendering ─────────────────────────────────────────────
   _drawStroke(ctx, line) {
     const pts = line.points;
     if (pts.length < 2) return;
@@ -568,6 +383,7 @@ export class DrawingEngine {
     ctx.restore();
   }
 
+  // ── Private: visual effects ───────────────────────────────────────────────
   _renderTrail(ctx) {
     if (this.trailPoints.length < 2) return;
     const now = performance.now();
@@ -580,22 +396,24 @@ export class DrawingEngine {
       const frac = 1 - (now - curr.t) / this.trailMaxAge;
       if (frac <= 0) continue;
       ctx.globalAlpha = frac * 0.45;
-      ctx.lineWidth   = frac * 5;
+      ctx.lineWidth   = frac * 6;
       ctx.strokeStyle = curr.color;
-      ctx.shadowBlur  = 12 * frac;
+      ctx.shadowBlur  = 14 * frac;
       ctx.shadowColor = curr.color;
       ctx.beginPath();
       ctx.moveTo(prev.x, prev.y);
       ctx.lineTo(curr.x, curr.y);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
     ctx.restore();
   }
 
   _spawnParticles(x, y, color, count = 6) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 0.8 + Math.random() * 2.8;
+      const speed = 0.8 + Math.random() * 2.5;
       this.particles.push({
         x, y,
         vx: Math.cos(angle) * speed,
@@ -610,8 +428,8 @@ export class DrawingEngine {
   _updateParticles() {
     for (const p of this.particles) {
       p.x += p.vx; p.y += p.vy;
-      p.vx *= 0.92; p.vy *= 0.92;
-      p.alpha -= 0.025;
+      p.vx *= 0.91; p.vy *= 0.91;
+      p.alpha -= 0.028;
     }
     this.particles = this.particles.filter(p => p.alpha > 0);
   }
@@ -627,6 +445,8 @@ export class DrawingEngine {
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
     ctx.restore();
   }
 
@@ -634,37 +454,46 @@ export class DrawingEngine {
     ctx.save();
     for (const [id, c] of Object.entries(this._remoteCursors)) {
       const color = c.color || '#FF3366';
+
+      // Cursor dot
       ctx.globalAlpha  = 0.85;
       ctx.fillStyle    = color;
-      ctx.shadowBlur   = 14;
+      ctx.shadowBlur   = 12;
       ctx.shadowColor  = color;
       ctx.beginPath();
       ctx.arc(c.x, c.y, 7, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.font         = 'bold 10px Space Grotesk, sans-serif';
+      // Short ID label
+      ctx.globalAlpha  = 0.75;
+      ctx.shadowBlur   = 0;
+      ctx.font         = 'bold 10px Outfit, sans-serif';
       ctx.fillStyle    = '#fff';
-      ctx.fillText(`👤 ${id.slice(-4)}`, c.x + 12, c.y - 8);
+      ctx.fillText(`👤 ${id.slice(-4)}`, c.x + 10, c.y - 8);
     }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
     ctx.restore();
   }
 
   _renderHoldRing(ctx, x, y, progress) {
     ctx.save();
-    ctx.lineWidth   = 4;
+    ctx.lineWidth   = 5;
     ctx.strokeStyle = '#FF3366';
-    ctx.shadowBlur  = 20;
+    ctx.shadowBlur  = 22;
     ctx.shadowColor = '#FF3366';
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
-    ctx.arc(x, y, 54, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.arc(x, y, 58, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
     ctx.stroke();
 
-    ctx.globalAlpha = progress * 0.15;
+    // Inner fill (progress indicator)
+    ctx.globalAlpha = progress * 0.12;
     ctx.fillStyle   = '#FF3366';
     ctx.beginPath();
-    ctx.arc(x, y, 54, 0, Math.PI * 2);
+    ctx.arc(x, y, 58, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.restore();
   }
 
@@ -672,34 +501,37 @@ export class DrawingEngine {
     ctx.save();
 
     if (gesture === 'DRAW') {
+      // Filled dot with glow
       ctx.fillStyle   = this.currentColor;
-      ctx.shadowBlur  = this.currentGlow + 14;
+      ctx.shadowBlur  = this.currentGlow + 16;
       ctx.shadowColor = this.currentColor;
       ctx.beginPath();
       ctx.arc(x, y, this.currentSize / 2 + 3, 0, Math.PI * 2);
       ctx.fill();
-
+      // Outer pulse ring
       ctx.strokeStyle = this.currentColor;
       ctx.lineWidth   = 1.5;
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.35;
+      ctx.shadowBlur  = 6;
       ctx.beginPath();
-      ctx.arc(x, y, this.currentSize + 10, 0, Math.PI * 2);
+      ctx.arc(x, y, this.currentSize + 12, 0, Math.PI * 2);
       ctx.stroke();
 
     } else if (gesture === 'ERASE') {
       const r = this.currentEraserSize;
-      ctx.setLineDash([5, 4]);
+      // Eraser dashed outline
+      ctx.setLineDash([6, 4]);
       ctx.strokeStyle = '#FF3366';
-      ctx.lineWidth   = 2;
-      ctx.shadowBlur  = 16;
+      ctx.lineWidth   = 2.5;
+      ctx.shadowBlur  = 18;
       ctx.shadowColor = '#FF3366';
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = 0.9;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.stroke();
-
+      // Crosshair
       ctx.setLineDash([]);
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.45;
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
@@ -715,9 +547,9 @@ export class DrawingEngine {
       ctx.fill();
 
     } else {
-      ctx.fillStyle   = hasHand ? 'rgba(56, 189, 248, 0.7)' : 'rgba(89, 97, 117, 0.5)';
+      ctx.fillStyle   = hasHand ? 'rgba(170,170,255,0.7)' : 'rgba(80,80,120,0.6)';
       ctx.shadowBlur  = hasHand ? 10 : 0;
-      ctx.shadowColor = '#38BDF8';
+      ctx.shadowColor = '#aaaaff';
       ctx.beginPath();
       ctx.arc(x, y, 5, 0, Math.PI * 2);
       ctx.fill();
@@ -727,7 +559,7 @@ export class DrawingEngine {
   }
 
   _flashClear() {
-    this._clearFlash = { alpha: 0.7 };
+    this._clearFlash = { alpha: 0.65 };
   }
 
   _saveSnapshot() {
@@ -736,9 +568,9 @@ export class DrawingEngine {
         0, 0, this.bufferCanvas.width, this.bufferCanvas.height
       );
       this.historyStack.push({ lines: JSON.stringify(this.lines), imageData });
-      if (this.historyStack.length > 25) this.historyStack.shift();
+      if (this.historyStack.length > 20) this.historyStack.shift();
     } catch (e) {
-      // Safe fallback on cross-origin image taint
+      // Silently skip on cross-origin taint errors
     }
   }
 }

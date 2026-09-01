@@ -1,4 +1,4 @@
-// Air Draw — Multiplayer server  (Node.js + Socket.IO)
+// AERIX — Multiplayer server  (Node.js + Socket.IO)
 // Start:         node server.js
 // Vite dev:      npm run dev   (separate terminal)
 
@@ -121,7 +121,7 @@ io.on('connection', (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════╗
-║   🚀  Air Draw Multiplayer Server     ║
+║   🚀  AERIX Multiplayer Server        ║
 ║       Listening on :${PORT}             ║
 ║       Health: http://localhost:${PORT}/health ║
 ╚═══════════════════════════════════════╝
